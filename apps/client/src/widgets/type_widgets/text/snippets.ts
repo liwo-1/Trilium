@@ -1,9 +1,12 @@
+import type { SnippetDefinition } from "@triliumnext/ckeditor5";
+import { useEffect, useState } from "preact/hooks";
+
+import type FNote from "../../../entities/fnote.js";
 import debounce from "../../../services/debounce.js";
 import froca from "../../../services/froca.js";
 import type LoadResults from "../../../services/load_results.js";
 import search from "../../../services/search.js";
-import type { SnippetDefinition } from "@triliumnext/ckeditor5";
-import type FNote from "../../../entities/fnote.js";
+import { useTriliumEvent } from "../../react/hooks.js";
 
 interface TemplateData {
     title: string;
@@ -45,6 +48,20 @@ export default async function getTemplates() {
         logError("Error while building text snippet templates: ", e);
         return [];
     }
+}
+
+export function useTemplates() {
+    const [ templates, setTemplates ] = useState<SnippetDefinition[]>();
+
+    useEffect(() => {
+        getTemplates().then(setTemplates);
+    }, []);
+
+    useTriliumEvent("entitiesReloaded", async ({ loadResults }) => {
+        await updateTemplateCache(loadResults, setTemplates);
+    });
+
+    return templates;
 }
 
 async function invalidateCacheFor(snippet: FNote) {

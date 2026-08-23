@@ -1,9 +1,9 @@
 import "./EditableText.css";
 import "./LinkEmbed.css";
 
-import { CKTextEditor, EditorWatchdog, SnippetDefinition } from "@triliumnext/ckeditor5";
+import { CKTextEditor, EditorWatchdog } from "@triliumnext/ckeditor5";
 import { deferred } from "@triliumnext/commons";
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef } from "preact/hooks";
 
 import appContext from "../../../components/app_context";
 import dialog from "../../../services/dialog";
@@ -16,7 +16,7 @@ import utils, { isMobile } from "../../../services/utils";
 import { useEditorSpacedUpdate, useLegacyImperativeHandlers, useNoteLabel, useTriliumEvent, useTriliumOption, useTriliumOptionBool } from "../../react/hooks";
 import { TypeWidgetProps } from "../type_widget";
 import CKEditorWithWatchdog, { CKEditorApi, NotificationEventData, NotificationEventInfo } from "./CKEditorWithWatchdog";
-import getTemplates, { updateTemplateCache } from "./snippets.js";
+import { useTemplates } from "./snippets.js";
 import linkEmbedService from "../../../services/link_embed";
 import { usesClassicToolbar } from "./toolbar";
 import { loadIncludedNote, refreshIncludedNote, setupImageOpening } from "./utils";
@@ -504,20 +504,6 @@ function placeCursorInNewTopParagraph(editor: CKTextEditor) {
             editor.editing.view.scrollToTheSelection();
         }
     });
-}
-
-function useTemplates() {
-    const [ templates, setTemplates ] = useState<SnippetDefinition[]>();
-
-    useEffect(() => {
-        getTemplates().then(setTemplates);
-    }, []);
-
-    useTriliumEvent("entitiesReloaded", async ({ loadResults }) => {
-        await updateTemplateCache(loadResults, setTemplates);
-    });
-
-    return templates;
 }
 
 function useWatchdogCrashHandling() {

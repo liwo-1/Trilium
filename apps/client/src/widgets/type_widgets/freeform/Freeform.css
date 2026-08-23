@@ -6,21 +6,47 @@
     background: var(--main-background-color);
     color: var(--main-text-color);
 
-    & .freeform-toolbar {
-        --overlay-group-inset: 14px;
-        z-index: 20;
+    & .freeform-topbar {
         position: sticky;
-        width: max-content;
-        top: 14px;
-        left: 14px;
-        margin-bottom: -34px;
+        z-index: 20;
+        top: 0;
+        min-width: 100%;
+        height: 40px;
+        border-bottom: 1px solid var(--main-border-color);
+        background: var(--main-background-color);
+    }
+
+    & .freeform-toolbar {
+        --overlay-group-inset: 4px;
+        z-index: 2;
+    }
+
+    & .freeform-formatting-toolbar {
+        --ck-color-toolbar-background: transparent;
+        --ck-color-button-default-background: transparent;
+        --ck-color-button-default-disabled-background: transparent;
+        min-height: 39px;
+        margin-inline-start: 94px;
+
+        &.inactive {
+            opacity: .45;
+            pointer-events: none;
+        }
+
+        & .ck.ck-toolbar {
+            border: 0;
+        }
+
+        & .ck.ck-button.ck-disabled {
+            opacity: .3;
+        }
     }
 
     & .freeform-surface {
         position: relative;
         width: 2400px;
         min-width: 100%;
-        height: 1600px;
+        height: var(--freeform-canvas-height);
         min-height: 100%;
         background-color: var(--main-background-color);
 
@@ -45,13 +71,11 @@
         left: var(--freeform-item-x);
         top: var(--freeform-item-y);
         width: var(--freeform-item-width);
-        height: var(--freeform-item-height);
         min-width: 160px;
         min-height: 80px;
         max-width: 960px;
-        max-height: 720px;
-        resize: both;
-        overflow: auto;
+        resize: horizontal;
+        overflow: hidden;
         border: 1px solid transparent;
         border-radius: 3px;
         background: color-mix(in srgb, var(--main-background-color) 96%, var(--main-text-color));
@@ -77,12 +101,30 @@
         touch-action: none;
     }
 
-    & .freeform-item-content {
+    & .freeform-item-actions {
+        --overlay-group-inset: 4px;
+        z-index: 4;
+        opacity: .8;
+    }
+
+    & .freeform-item-editor-shell {
         box-sizing: border-box;
-        min-height: 100%;
+        min-height: 80px;
+    }
+
+    & .freeform-item-editor,
+    & .freeform-item-preview {
+        box-sizing: border-box;
+        min-height: 80px;
         padding: 16px;
-        outline: none;
         line-height: 1.5;
+    }
+
+    & .freeform-item-editor {
+        border: 0 !important;
+        outline: none;
+        box-shadow: none !important;
+        background: transparent;
 
         & > :first-child {
             margin-top: 0;

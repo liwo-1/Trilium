@@ -1,6 +1,7 @@
 export const FREEFORM_DOCUMENT_VERSION = 1;
 export const FREEFORM_CANVAS_WIDTH = 2400;
 export const FREEFORM_CANVAS_HEIGHT = 1600;
+const FREEFORM_ITEM_MAX_HEIGHT = 10_000;
 
 export interface FreeformItem {
     id: string;
@@ -74,7 +75,7 @@ function normalizeItem(item: unknown): FreeformItem | null {
         x: clampNumber(candidate.x, 0, FREEFORM_CANVAS_WIDTH - 160, 80),
         y: clampNumber(candidate.y, 0, FREEFORM_CANVAS_HEIGHT - 80, 80),
         width: clampNumber(candidate.width, 160, 960, 360),
-        height: clampNumber(candidate.height, 80, 720, 180),
+        height: clampNumber(candidate.height, 80, FREEFORM_ITEM_MAX_HEIGHT, 180),
         html: candidate.html
     };
 }

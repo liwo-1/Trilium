@@ -334,6 +334,29 @@ export default function CKEditorWithWatchdog({ containerRef: externalContainerRe
 
         return () => {
             isStale = true;
+            buildQueueRef.current = buildQueueRef.current
+                .then(async () => {
+                    const watchdog = watchdogRef.current;
+                    if (!watchdog) {
+                        return;
+                    }
+
+                    try {
+                        await watchdog.destroy();
+                    } catch (e) {
+                        console.warn("Watchdog destroy failed", e);
+                    } finally {
+                        if (watchdogRef.current === watchdog) {
+                            watchdogRef.current = null;
+                        }
+                        if (externalWatchdogRef.current === watchdog) {
+                            externalWatchdogRef.current = null;
+                        }
+                    }
+                })
+                .catch((e) => {
+                    console.warn("CKEditor teardown failed", e);
+                });
         };
         // `templates` is intentionally excluded: snippet changes are pushed into the live editor by the
         // effect below, so they must not trigger a full editor rebuild.
