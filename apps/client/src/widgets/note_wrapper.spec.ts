@@ -51,6 +51,7 @@ describe("isAlwaysFullWidthByType", () => {
 
     it("is true for layout-heavy types, media/PDF files and non-list/grid searches", () => {
         expect(isAlwaysFullWidthByType(buildNote({ title: "Canvas", type: "canvas" }))).toBe(true);
+        expect(isAlwaysFullWidthByType(buildNote({ title: "Freeform", type: "freeform" }))).toBe(true);
 
         const pdf = buildNote({ title: "PDF", type: "file" });
         pdf.mime = "application/pdf";
@@ -81,7 +82,7 @@ describe("isFullWidthNote", () => {
     });
 
     it("treats layout-heavy note types as full width regardless of the label", () => {
-        for (const type of ["code", "image", "mermaid", "book", "render", "canvas", "webView", "noteMap", "mindMap", "spreadsheet"] as const) {
+        for (const type of ["code", "image", "mermaid", "book", "render", "canvas", "freeform", "webView", "noteMap", "mindMap", "spreadsheet"] as const) {
             expect(isFullWidthNote(buildNote({ title: type, type }))).toBe(true);
         }
     });

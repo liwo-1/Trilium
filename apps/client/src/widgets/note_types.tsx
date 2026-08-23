@@ -129,6 +129,12 @@ export const TYPE_MAPPINGS: Record<ExtendedNoteType, NoteTypeMapping> = {
         printable: true,
         isFullHeight: true
     },
+    freeform: {
+        view: () => import("./type_widgets/freeform/Freeform"),
+        className: "note-detail-freeform",
+        printable: true,
+        isFullHeight: true
+    },
     relationMap: {
         view: () => import("./type_widgets/relation_map/RelationMap"),
         className: "note-detail-relation-map",

@@ -29,6 +29,7 @@ describe("NOTE_TYPE_ICONS", () => {
         expect(NOTE_TYPE_ICONS.code).toBe("bx bx-code");
         expect(NOTE_TYPE_ICONS.book).toBe("bx bx-book");
         expect(NOTE_TYPE_ICONS.mermaid).toBe("bx bx-selection");
+        expect(NOTE_TYPE_ICONS.freeform).toBe("bx bx-layout");
         expect(NOTE_TYPE_ICONS.mindMap).toBe("bx bx-sitemap");
         expect(NOTE_TYPE_ICONS.llmChat).toBe("bx bx-message-square-dots");
     });

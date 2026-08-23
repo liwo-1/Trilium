@@ -33,6 +33,7 @@ describe("ALLOWED_NOTE_TYPES", () => {
             "relationMap",
             "render",
             "canvas",
+            "freeform",
             "mermaid",
             "book",
             "webView",

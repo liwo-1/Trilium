@@ -138,7 +138,7 @@ export function isAlwaysFullWidthByType(note: FNote) {
         return true;
     }
 
-    if (["code", "image", "mermaid", "book", "render", "canvas", "webView", "noteMap", "mindMap", "spreadsheet"].includes(note.type)) {
+    if (["code", "image", "mermaid", "book", "render", "canvas", "freeform", "webView", "noteMap", "mindMap", "spreadsheet"].includes(note.type)) {
         return true;
     }
 

@@ -19,7 +19,7 @@ const RELATION = "relation";
  * end user. Those types should be used only for checking against, they are
  * not for direct use.
  */
-export type NoteType = "file" | "image" | "search" | "noteMap" | "launcher" | "doc" | "contentWidget" | "text" | "relationMap" | "render" | "canvas" | "mermaid" | "book" | "webView" | "code" | "mindMap" | "spreadsheet" | "llmChat";
+export type NoteType = "file" | "image" | "search" | "noteMap" | "launcher" | "doc" | "contentWidget" | "text" | "relationMap" | "render" | "canvas" | "freeform" | "mermaid" | "book" | "webView" | "code" | "mindMap" | "spreadsheet" | "llmChat";
 
 export interface NotePathRecord {
     isArchived: boolean;

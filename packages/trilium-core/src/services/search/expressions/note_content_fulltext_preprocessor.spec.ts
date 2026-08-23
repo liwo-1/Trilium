@@ -39,6 +39,29 @@ describe("Canvas preprocessing", () => {
     });
 });
 
+describe("Freeform preprocessing", () => {
+    const type: NoteType = "freeform";
+    const mime = "application/json";
+
+    it("supports empty and invalid documents", () => {
+        expect(preprocessContent("{}", type, mime)).toEqual("");
+        expect(preprocessContent("not-json", type, mime)).toEqual("");
+    });
+
+    it("indexes visible text from every text box", () => {
+        const content = JSON.stringify({
+            type: "trilium-freeform",
+            version: 1,
+            items: [
+                { html: "<h2>Network plan</h2><p>Core switch</p>" },
+                { html: "<p>VLAN <strong>20</strong></p>" }
+            ]
+        });
+
+        expect(preprocessContent(content, type, mime)).toEqual("network plan core switch vlan 20");
+    });
+});
+
 describe("Spreadsheet preprocessing", () => {
     const type: NoteType = "spreadsheet";
     const mime = "application/json";

@@ -2491,7 +2491,8 @@
     "task-list": "Task List",
     "new-feature": "New",
     "collections": "Collections",
-    "spreadsheet": "Spreadsheet"
+    "spreadsheet": "Spreadsheet",
+    "freeform": "Freeform"
   },
   "protect_note": {
     "toggle-on": "Protect the note",
@@ -4035,5 +4036,12 @@
       "invalid-symbol": "the markdown symbol should be one character, excepting \"[\", \" \", \"X\", and \"]\"",
       "duplicate-symbol": "duplicate markdown symbol"
     }
+  },
+  "freeform": {
+    "add_text": "Add text box",
+    "toggle_grid": "Toggle grid",
+    "delete_selected": "Delete selected box",
+    "empty_hint": "Add a text box to start arranging your page.",
+    "invalid_content": "This Freeform page contains data this version cannot open."
   }
 }

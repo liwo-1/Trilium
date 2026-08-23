@@ -16,6 +16,7 @@ export const NOTE_TYPE_ICONS = {
     noteMap: "bx bxs-network-chart",
     mermaid: "bx bx-selection",
     canvas: "bx bx-pen",
+    freeform: "bx bx-layout",
     webView: "bx bx-globe-alt",
     launcher: "bx bx-link",
     doc: "bx bxs-file-doc",

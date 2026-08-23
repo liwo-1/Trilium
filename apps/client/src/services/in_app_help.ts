@@ -9,6 +9,7 @@ export const byNoteType: Record<Exclude<NoteType, "book">, string | null> = {
     contentWidget: null,
     doc: null,
     file: null,
+    freeform: null,
     image: null,
     launcher: null,
     mermaid: "s1aBHPd79XYj",

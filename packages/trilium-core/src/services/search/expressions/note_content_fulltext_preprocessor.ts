@@ -22,6 +22,8 @@ export default function preprocessContent(rawContent: string | Uint8Array, type:
         content = processMindmapContent(content);
     } else if (type === "canvas" && mime === "application/json") {
         content = processCanvasContent(content);
+    } else if (type === "freeform" && mime === "application/json") {
+        content = processFreeformContent(content);
     } else if (type === "spreadsheet" && mime === "application/json") {
         content = extractSpreadsheetText(content);
     } else if (type === "llmChat" && mime === "application/json") {
@@ -29,6 +31,22 @@ export default function preprocessContent(rawContent: string | Uint8Array, type:
     }
 
     return content.trim();
+}
+
+function processFreeformContent(content: string) {
+    try {
+        const parsed = JSON.parse(content) as { items?: Array<{ html?: unknown }> };
+        if (!Array.isArray(parsed.items)) {
+            return "";
+        }
+
+        return normalize(parsed.items
+            .map((item) => typeof item.html === "string" ? stripTags(item.html) : "")
+            .join(" ")
+            .replace(/\s+/g, " "));
+    } catch {
+        return "";
+    }
 }
 
 function processMindmapContent(content: string) {
