@@ -1,0 +1,34 @@
+name: Internal Trilium server build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or commit to package
+        required: true
+        default: feature/native-freeform
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    name: Linux x64 server
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Build official Linux server package
+        uses: ./.github/actions/build-server
+        with:
+          os: linux
+          arch: x64
+
+      - name: Upload internal-test package
+        uses: actions/upload-artifact@v7
+        with:
+          name: TriliumNotes-Server-Freeform-Test-linux-x64
+          path: upload/*.tar.xz
+          if-no-files-found: error
