@@ -683,7 +683,7 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                 />
                 <div
                     ref={toolbarContainerRef}
-                    className={`freeform-formatting-toolbar ${activeTextItemId === selectedItemId && !readOnly ? "" : "inactive"}`}
+                    className={`freeform-formatting-toolbar ${activeTextItemId && activeTextItemId === selectedItemId && !readOnly ? "" : "inactive"}`}
                 />
             </div>
 
