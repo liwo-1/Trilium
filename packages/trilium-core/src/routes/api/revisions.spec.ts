@@ -479,6 +479,73 @@ describe("Revisions API (core)", () => {
             const blob = await api.get<{ content: string }>(`/api/notes/${noteId}/blob`);
             expect(blob.body.content).toContain("attachments/");
         });
+
+        it("restores Freeform attachments structurally without rewriting prose", async () => {
+            const { noteId } = await createTextNote(api, { title: "Freeform revision" });
+            const typeRes = await api.put(`/api/notes/${noteId}/type`, {
+                body: { type: "freeform", mime: "application/json" }
+            });
+            expect(typeRes.status).toBe(204);
+
+            const saveRes = await api.post(`/api/notes/${noteId}/attachments`, {
+                body: { role: "image", mime: "image/png", title: "board.png", content: "image-bytes" }
+            });
+            expect(saveRes.status).toBe(204);
+
+            const attachmentId = getSql().getRowOrNull<{ attachmentId: string }>(
+                "SELECT attachmentId FROM attachments WHERE ownerId = ? AND isDeleted = 0",
+                [ noteId ]
+            )?.attachmentId;
+            expect(attachmentId).toBeTruthy();
+
+            const document = {
+                type: "trilium-freeform",
+                version: 2,
+                gridVisible: false,
+                items: [
+                    {
+                        id: "image1",
+                        type: "image",
+                        x: 0,
+                        y: 0,
+                        width: 320,
+                        height: 180,
+                        url: `api/attachments/${attachmentId}/image/board.png`,
+                        alt: "Board"
+                    },
+                    {
+                        id: "text1",
+                        type: "richText",
+                        x: 0,
+                        y: 200,
+                        width: 320,
+                        height: 100,
+                        html: `<pre>${attachmentId}</pre>`
+                    }
+                ]
+            };
+            await api.put(`/api/notes/${noteId}/data`, {
+                body: { content: JSON.stringify(document) }
+            });
+
+            const revisionId = (await api.post<{ revisionId: string }>(
+                `/api/notes/${noteId}/revision`, { body: {} }
+            )).body.revisionId;
+            await api.put(`/api/notes/${noteId}/data`, { body: { content: "changed" } });
+
+            expect((await api.post(`/api/revisions/${revisionId}/restore`)).status).toBe(204);
+
+            const restored = JSON.parse((await api.get<{ content: string }>(`/api/notes/${noteId}/blob`)).body.content);
+            const restoredAttachmentId = getSql().getRowOrNull<{ attachmentId: string }>(
+                "SELECT attachmentId FROM attachments WHERE ownerId = ? AND isDeleted = 0",
+                [ noteId ]
+            )?.attachmentId;
+
+            expect(restoredAttachmentId).toBeTruthy();
+            expect(restoredAttachmentId).not.toBe(attachmentId);
+            expect(restored.items[0].url).toContain(`api/attachments/${restoredAttachmentId}/image/board.png`);
+            expect(restored.items[1].html).toBe(`<pre>${attachmentId}</pre>`);
+        });
     });
 
     describe("download (GET /api/revisions/:revisionId/download)", () => {

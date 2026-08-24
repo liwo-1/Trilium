@@ -307,6 +307,52 @@ describe("Attachments API (core)", () => {
             expect(attachmentIsDeleted(saved.attachmentId)).toBe(1);
         });
 
+        it("rewrites Freeform image and file references when converting an attachment", async () => {
+            const { noteId } = await createTextNote(api, { title: "Freeform conversion owner" });
+            expect((await api.put(`/api/notes/${noteId}/type`, {
+                body: { type: "freeform", mime: "application/json" }
+            })).status).toBe(204);
+            const saved = await saveAttachment(noteId, { title: "board.png", content: "image bytes" });
+            const content = JSON.stringify({
+                type: "trilium-freeform",
+                version: 2,
+                gridVisible: false,
+                items: [
+                    {
+                        id: "image1",
+                        type: "image",
+                        x: 0,
+                        y: 0,
+                        width: 320,
+                        height: 180,
+                        url: `api/attachments/${saved.attachmentId}/image/board.png`,
+                        alt: ""
+                    },
+                    {
+                        id: "text1",
+                        type: "richText",
+                        x: 0,
+                        y: 200,
+                        width: 320,
+                        height: 100,
+                        html: `<p>${saved.attachmentId}</p><a href="#root/${noteId}?viewMode=attachments&amp;attachmentId=${saved.attachmentId}">File</a>`
+                    }
+                ]
+            });
+            expect((await api.put(`/api/notes/${noteId}/data`, { body: { content } })).status).toBe(204);
+
+            const converted = await api.post<ConvertResponse>(
+                `/api/attachments/${saved.attachmentId}/convert-to-note`
+            );
+            expect(converted.status).toBe(200);
+
+            const restored = JSON.parse((await api.get<{ content: string }>(`/api/notes/${noteId}/blob`)).body.content);
+            expect(restored.items[0].url).toBe(`api/images/${converted.body.note.noteId}/board.png`);
+            expect(restored.items[1].html).toContain(`href="#root/${converted.body.note.noteId}"`);
+            expect(restored.items[1].html).toContain(`<p>${saved.attachmentId}</p>`);
+            expect(attachmentIsDeleted(saved.attachmentId)).toBe(1);
+        });
+
         it("404s when converting a missing attachment", async () => {
             const res = await api.post("/api/attachments/missingAttachment123/convert-to-note");
             expect(res.status).toBe(404);

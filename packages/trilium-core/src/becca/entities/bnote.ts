@@ -1,5 +1,5 @@
 import type { AttachmentRow, AttributeType, CloneResponse, EraseExcessRevisionsOptions, NoteRow, NoteType, RevisionRow, RevisionSource } from "@triliumnext/commons";
-import { dayjs, getNoteIcon } from "@triliumnext/commons";
+import { dayjs, getNoteIcon, rewriteFreeformReferences } from "@triliumnext/commons";
 
 import cloningService from "../../services/cloning.js";
 import dateUtils from "../../services/utils/date.js";
@@ -1572,6 +1572,7 @@ class BNote extends AbstractBeccaEntity<BNote> {
 
             revision.save(); // to generate revisionId, which is then used to save attachments
 
+            const attachmentIdMapping: Record<string, string> = {};
             for (const noteAttachment of this.getAttachments()) {
                 const revisionAttachment = noteAttachment.copy();
 
@@ -1581,7 +1582,12 @@ class BNote extends AbstractBeccaEntity<BNote> {
                 }
 
                 revisionAttachment.ownerId = revision.revisionId;
+                revisionAttachment.isProtected = revision.isProtected;
                 revisionAttachment.setContent(noteAttachment.getContent(), { forceSave: true });
+
+                if (noteAttachment.attachmentId && revisionAttachment.attachmentId) {
+                    attachmentIdMapping[noteAttachment.attachmentId] = revisionAttachment.attachmentId;
+                }
 
                 if (this.type === "text" && typeof noteContent === "string") {
                     // content is rewritten to point to the revision attachments
@@ -1592,6 +1598,12 @@ class BNote extends AbstractBeccaEntity<BNote> {
                         `href="api/attachments/${revisionAttachment.attachmentId}/download"`
                     );
                 }
+            }
+
+            if (this.type === "freeform" && typeof noteContent === "string") {
+                noteContent = rewriteFreeformReferences(noteContent, {
+                    attachmentId: (attachmentId) => attachmentIdMapping[attachmentId] ?? attachmentId
+                });
             }
 
             revision.setContent(noteContent);

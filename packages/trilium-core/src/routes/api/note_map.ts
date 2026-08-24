@@ -1,7 +1,7 @@
 import BAttribute from "../../becca/entities/battribute";
 import BNote from "../../becca/entities/bnote";
 import becca from "../../becca/becca";
-import type { BacklinkCountResponse, BacklinksResponse, NoteMapNote } from "@triliumnext/commons";
+import { parseFreeformContentDocument, type BacklinkCountResponse, type BacklinksResponse, type NoteMapNote } from "@triliumnext/commons";
 import type { Request } from "express";
 
 import { findExcerpts, findLlmChatExcerpts, findMindMapExcerpts } from "../../services/backlink_excerpts";
@@ -266,7 +266,7 @@ function getBacklinks(req: Request<{ noteId: string }>): BacklinksResponse {
 
     return getFilteredBacklinks(note).map((backlink) => {
         const sourceNote = backlink.note;
-        const supportsExcerpts = sourceNote.type === "text" || sourceNote.type === "llmChat" || sourceNote.type === "mindMap";
+        const supportsExcerpts = sourceNote.type === "text" || sourceNote.type === "freeform" || sourceNote.type === "llmChat" || sourceNote.type === "mindMap";
 
         if (!supportsExcerpts || backlinksWithExcerptCount > 50) {
             return {
@@ -301,6 +301,17 @@ function findSourceExcerpts(sourceNote: BNote, referencedNoteId: string): string
     const content = sourceNote.getContent().toString();
 
     switch (sourceNote.type) {
+        case "freeform": {
+            const document = parseFreeformContentDocument(content);
+            if (!document) {
+                return [];
+            }
+            return document.items.flatMap((item) => (
+                item?.type === "richText" && typeof item.html === "string"
+                    ? findExcerpts(item.html, referencedNoteId)
+                    : []
+            ));
+        }
         case "llmChat":
             return findLlmChatExcerpts(content, referencedNoteId);
         case "mindMap":

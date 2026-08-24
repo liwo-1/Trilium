@@ -26,7 +26,7 @@
         --ck-color-button-default-background: transparent;
         --ck-color-button-default-disabled-background: transparent;
         min-height: 39px;
-        margin-inline-start: 94px;
+        margin-inline-start: 130px;
 
         &.inactive {
             opacity: .45;
@@ -44,11 +44,12 @@
 
     & .freeform-surface {
         position: relative;
-        width: 2400px;
+        width: var(--freeform-canvas-width);
         min-width: 100%;
         height: var(--freeform-canvas-height);
         min-height: 100%;
         background-color: var(--main-background-color);
+        outline: none;
 
         &.grid-visible {
             background-image:
@@ -74,11 +75,10 @@
         min-width: 160px;
         min-height: 80px;
         max-width: 960px;
-        resize: horizontal;
         overflow: hidden;
         border: 1px solid transparent;
         border-radius: 3px;
-        background: color-mix(in srgb, var(--main-background-color) 96%, var(--main-text-color));
+        background: transparent;
 
         &:hover {
             border-color: color-mix(in srgb, var(--main-text-color) 22%, transparent);
@@ -88,17 +88,58 @@
             border-color: var(--accent-color);
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 25%, transparent);
         }
+
+        &.image {
+            min-width: 1px;
+            min-height: 1px;
+            aspect-ratio: var(--freeform-image-aspect-ratio);
+            resize: horizontal;
+            background: transparent;
+        }
+
+        &.richText {
+            height: var(--freeform-item-height);
+            max-height: 10000px;
+            resize: both;
+            background: transparent;
+        }
+    }
+
+    &.read-only .freeform-item {
+        resize: none;
+    }
+
+    & .freeform-item-image {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        pointer-events: none;
+        user-select: none;
     }
 
     & .freeform-item-drag-handle {
         position: absolute;
-        z-index: 2;
-        top: -1px;
-        right: 20px;
-        left: -1px;
-        height: 10px;
+        z-index: 3;
+        top: 4px;
+        left: 50%;
+        width: 36px;
+        height: 9px;
+        border: 1px solid color-mix(in srgb, var(--main-text-color) 18%, transparent);
+        border-radius: 5px;
+        opacity: 0;
+        background:
+            radial-gradient(circle, var(--muted-text-color) 1px, transparent 1.5px) center / 6px 6px,
+            color-mix(in srgb, var(--main-background-color) 92%, var(--main-text-color));
+        transform: translateX(-50%);
         cursor: move;
         touch-action: none;
+        transition: opacity 100ms ease;
+    }
+
+    & .freeform-item:hover .freeform-item-drag-handle,
+    & .freeform-item.selected .freeform-item-drag-handle {
+        opacity: .8;
     }
 
     & .freeform-item-actions {
@@ -110,6 +151,7 @@
     & .freeform-item-editor-shell {
         box-sizing: border-box;
         min-height: 80px;
+        background: transparent;
     }
 
     & .freeform-item-editor,
@@ -118,13 +160,14 @@
         min-height: 80px;
         padding: 16px;
         line-height: 1.5;
+        background: transparent;
     }
 
     & .freeform-item-editor {
         border: 0 !important;
         outline: none;
         box-shadow: none !important;
-        background: transparent;
+        background: transparent !important;
 
         & > :first-child {
             margin-top: 0;

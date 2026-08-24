@@ -431,6 +431,29 @@ describe("Note map service (branch coverage)", () => {
         return res.find((b) => b.noteId === sourceId) as any;
     }
 
+    it("Freeform backlinks quote the rich-text box containing the link", () => {
+        const target = buildNote({ id: "freeformExcerptTarget", title: "Freeform target" });
+        buildNote({
+            id: "freeformExcerptSource",
+            title: "Freeform source",
+            type: "freeform",
+            "~internalLink": target.noteId,
+            content: JSON.stringify({
+                type: "trilium-freeform",
+                version: 2,
+                gridVisible: false,
+                items: [
+                    { type: "richText", html: "<p>Unrelated box</p>" },
+                    { type: "richText", html: `<p>Nearby context <a href="#root/${target.noteId}">target</a></p>` }
+                ]
+            })
+        });
+
+        const backlink = note_map.getBacklinks(req(target.noteId)).find((item) => item.noteId === "freeformExcerptSource");
+        expect(backlink).toMatchObject({ noteId: "freeformExcerptSource" });
+        expect(backlink && "excerpts" in backlink ? backlink.excerpts.join(" ") : "").toContain("Nearby context");
+    });
+
     // The excerpt HTML itself is covered by services/llm_chat_excerpts.spec.ts;
     // these only pin how getBacklinks routes llmChat sources.
     it("llmChat backlinks: a quotable mention yields excerpts instead of the relation name", () => {

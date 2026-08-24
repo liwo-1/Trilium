@@ -35,6 +35,7 @@ const READ_ONLY_CAPABLE_TYPES: string[] = [
     "code",
     "mermaid",
     "canvas",
+    "freeform",
     "mindMap",
     "spreadsheet"
 ];

@@ -376,6 +376,67 @@ describe("checkImageAttachments", () => {
         });
     });
 
+    describe("Freeform content", () => {
+        function freeformContent(...urls: string[]) {
+            return JSON.stringify({
+                type: "trilium-freeform",
+                version: 1,
+                gridVisible: false,
+                items: urls.map((url, index) => ({
+                    id: `image-${index}`,
+                    type: "image",
+                    x: 80,
+                    y: 80,
+                    width: 480,
+                    height: 320,
+                    url,
+                    alt: ""
+                }))
+            });
+        }
+
+        it("keeps referenced images and schedules removed images for erasure", () => {
+            const note = buildNote({
+                title: "Freeform",
+                type: "freeform",
+                mime: "application/json",
+                attachments: [{ title: "photo.png", role: "image", mime: "image/png" }]
+            });
+            mockAttachmentSaves(note);
+            const [ attachment ] = note.getAttachments();
+
+            checkImageAttachments(
+                note,
+                freeformContent(`api/attachments/${attachment.attachmentId}/image/photo.png`)
+            );
+            expect(attachment.save).not.toHaveBeenCalled();
+
+            checkImageAttachments(note, freeformContent());
+            expect(attachment.save).toHaveBeenCalled();
+            expect(attachment.utcDateScheduledForErasureSince).toBeTruthy();
+        });
+
+        it("cancels scheduled erasure when an image is restored", () => {
+            const note = buildNote({
+                title: "Freeform",
+                type: "freeform",
+                mime: "application/json",
+                attachments: [{ title: "photo.png", role: "image", mime: "image/png" }]
+            });
+            mockAttachmentSaves(note);
+            const [ attachment ] = note.getAttachments();
+            attachment.utcDateScheduledForErasureSince = "2025-01-01 00:00:00.000Z";
+
+            checkImageAttachments(
+                note,
+                freeformContent(`api/attachments/${attachment.attachmentId}/image/photo.png`)
+            );
+
+            expect(attachment.save).toHaveBeenCalled();
+            expect(attachment.utcDateScheduledForErasureSince).toBeNull();
+        });
+    });
+
     describe("Canvas content", () => {
         /** Wraps image fileIds into the JSON shape a canvas note persists (one element per fileId). */
         function canvasContent(...fileIds: string[]) {
@@ -694,6 +755,61 @@ describe("saveLinks", () => {
         saveLinks(note, JSON.stringify({ nodeData: { id: "root", topic: "Root" } }));
 
         expect(picture.utcDateScheduledForErasureSince).toBeTruthy();
+    });
+
+    it("schedules a picture removed from a freeform page for erasure", () => {
+        const note = buildNote({
+            title: "Freeform",
+            type: "freeform",
+            mime: "application/json",
+            attachments: [{ title: "photo.png", role: "image", mime: "image/png" }]
+        });
+        mockAttachmentSaves(note);
+        const [ picture ] = note.getAttachments();
+
+        saveLinks(note, JSON.stringify({
+            type: "trilium-freeform",
+            version: 1,
+            gridVisible: false,
+            items: []
+        }));
+
+        expect(picture.utcDateScheduledForErasureSince).toBeTruthy();
+    });
+
+    it("keeps backlinks from rich-text boxes and normalizes absolute Trilium links", () => {
+        const note = buildNote({ title: "Freeform", type: "freeform", mime: "application/json" });
+        const target = buildNote({ title: "Target" });
+        becca.notes[target.noteId] = target;
+
+        const internalLink = makeLinkRelation(note.noteId, "internalLink", target.noteId);
+        note.getRelations = () => [ internalLink ];
+        note.getAttachments = () => [];
+
+        const content = JSON.stringify({
+            type: "trilium-freeform",
+            version: 1,
+            gridVisible: false,
+            items: [{
+                id: "text-1",
+                type: "richText",
+                x: 80,
+                y: 80,
+                width: 360,
+                height: 180,
+                html: `<p><a href="https://notes.example/#root/${target.noteId}">Target</a></p>`
+            }]
+        });
+
+        const result = saveLinks(note, content);
+        const saved = JSON.parse(result.content as string);
+
+        expect(internalLink.markAsDeleted).not.toHaveBeenCalled();
+        expect(saved.items[0].html).toBe(`<p><a href="#root/${target.noteId}">Target</a></p>`);
+
+        saved.items[0].html = "<p>The link was removed</p>";
+        saveLinks(note, JSON.stringify(saved));
+        expect(internalLink.markAsDeleted).toHaveBeenCalled();
     });
 
     it("does not delete existing imageLink relations on markdown notes that reference images", () => {

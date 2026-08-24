@@ -225,6 +225,83 @@ describe("processNoteContent", () => {
         expect(content).not.toContain("mapPicture1");
     });
 
+    it("remaps structured Freeform attachment and note references on import", async () => {
+        const metaFile = {
+            formatVersion: 2,
+            appVersion: "0.0.0",
+            files: [{
+                noteId: "freeformSource1",
+                title: "Freeform board",
+                type: "freeform",
+                mime: "application/json",
+                dataFileName: "Freeform board.json",
+                dirFileName: "Freeform board",
+                attachments: [{
+                    attachmentId: "freeformImage1",
+                    title: "diagram.png",
+                    role: "image",
+                    mime: "image/png",
+                    position: 10,
+                    dataFileName: "Freeform board_diagram.png"
+                }],
+                children: [{
+                    noteId: "freeformChild1",
+                    title: "Linked child",
+                    type: "text",
+                    mime: "text/html",
+                    dataFileName: "Linked child.html",
+                    attachments: []
+                }]
+            }]
+        };
+        const freeformData = {
+            type: "trilium-freeform",
+            version: 2,
+            gridVisible: false,
+            items: [
+                {
+                    id: "image1",
+                    type: "image",
+                    x: 0,
+                    y: 0,
+                    width: 320,
+                    height: 180,
+                    url: "api/attachments/freeformImage1/image/diagram.png",
+                    alt: "Diagram"
+                },
+                {
+                    id: "text1",
+                    type: "richText",
+                    x: 20,
+                    y: 220,
+                    width: 360,
+                    height: 100,
+                    html: '<p><a class="reference-link" href="#root/freeformChild1" data-note-id="freeformChild1">Child</a></p><pre>freeformImage1</pre>'
+                }
+            ]
+        };
+
+        const zipBuffer = await createZipBuffer({
+            "!!!meta.json": JSON.stringify(metaFile),
+            "Freeform board.json": JSON.stringify(freeformData),
+            "Freeform board_diagram.png": Buffer.from("fake image data"),
+            "Freeform board/Linked child.html": "<p>Child content</p>"
+        });
+
+        const { importedNote } = await testImportBuffer(zipBuffer, "import-freeform-remap");
+        const [ image ] = importedNote.getAttachmentsByRole("image");
+        const [ child ] = importedNote.getChildNotes();
+        const content = importedNote.getContent() as string;
+
+        expect(importedNote.type).toBe("freeform");
+        expect(image.attachmentId).not.toBe("freeformImage1");
+        expect(child.noteId).not.toBe("freeformChild1");
+        expect(content).toContain(`api/attachments/${image.attachmentId}/image/diagram.png`);
+        expect(content).toContain(`#root/${child.noteId}`);
+        expect(content).toContain(`data-note-id=\\"${child.noteId}\\"`);
+        expect(content).toContain("<pre>freeformImage1</pre>");
+    });
+
     it("restores an embedded mermaid diagram as a note reference, not as a raw attachment", async () => {
         // The export points the <img> at the mermaid note's generated `mermaid-export.svg`.
         // On the way back in that has to resolve to `api/images/<noteId>` — which re-renders the

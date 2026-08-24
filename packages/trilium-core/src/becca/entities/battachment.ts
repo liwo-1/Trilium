@@ -1,6 +1,6 @@
 
 
-import { type AttachmentRow, isImageAttachmentRole } from "@triliumnext/commons";
+import { convertFreeformAttachmentToNote, type AttachmentRow, isImageAttachmentRole } from "@triliumnext/commons";
 
 import dateUtils from "../../services/utils/date";
 import { getLog } from "../../services/log.js";
@@ -181,16 +181,18 @@ class BAttachment extends AbstractBeccaEntity<BAttachment> {
 
         const parentNote = this.getNote();
 
-        if (parentNote.type === "text") {
+        if (parentNote.type === "text" || parentNote.type === "freeform") {
             const origContent = parentNote.getContent();
 
             if (typeof origContent !== "string") {
                 throw new Error(`Note with ID '${note.noteId}' has a text type but non-string content.`);
             }
 
-            let fixedContent = origContent;
+            let fixedContent = parentNote.type === "freeform" && attachmentId
+                ? convertFreeformAttachmentToNote(origContent, attachmentId, note.noteId)
+                : origContent;
 
-            if (isImageAttachmentRole(this.role)) {
+            if (parentNote.type === "text" && isImageAttachmentRole(this.role)) {
                 // Rewrite embedded images (`<img src="api/attachments/{attachmentId}/image/...">`)
                 // to point at the new image note. A link preview's `data-image` / `data-favicon`
                 // carry the same URL, so replacing the prefix covers them too.
@@ -204,7 +206,7 @@ class BAttachment extends AbstractBeccaEntity<BAttachment> {
             // resolving to "[missing attachment]" once the attachment is gone. These links are stored
             // as `<a href="#root/{ownerId}?viewMode=attachments&attachmentId={attachmentId}">` (the `&`
             // may be HTML-encoded as `&amp;`), which we collapse to a plain note link `#root/{noteId}`.
-            if (attachmentId) {
+            if (parentNote.type === "text" && attachmentId) {
                 fixedContent = fixedContent.replace(
                     new RegExp(`href="[^"]*attachmentId=${escapeRegExp(attachmentId)}[^"]*"`, "g"),
                     `href="#root/${note.noteId}"`

@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { createTextNote } from "../../test/api_fixtures";
 import { CoreApiTester } from "../../test/api_tester";
+import { getSql } from "../../services/sql/index";
 import { isNewTemplate } from "./search";
 
 let api: CoreApiTester;
@@ -30,6 +31,54 @@ describe("Search API (core)", () => {
         expect(res.status).toBe(200);
         expect(res.body.searchResultNoteIds).toContain(createdNoteId);
         expect(Array.isArray(res.body.searchResults)).toBe(true);
+    });
+
+    it("finds Freeform text and returns a readable snippet", async () => {
+        const token = "freeformsearchneedleqwerty";
+        const { noteId } = await createTextNote(api, { title: `Searchable board ${token}` });
+        expect((await api.put(`/api/notes/${noteId}/type`, {
+            body: { type: "freeform", mime: "application/json" }
+        })).status).toBe(204);
+        expect((await api.put(`/api/notes/${noteId}/data`, {
+            body: {
+                content: JSON.stringify({
+                    type: "trilium-freeform",
+                    version: 2,
+                    gridVisible: false,
+                    items: [{
+                        id: "text1",
+                        type: "richText",
+                        x: 0,
+                        y: 0,
+                        width: 320,
+                        height: 100,
+                        html: `<p>Readable ${token} content</p>`
+                    }]
+                })
+            }
+        })).status).toBe(204);
+        const stored = getSql().getRowOrNull<{ type: string; mime: string; content: string }>(
+            "SELECT type, mime, content FROM notes JOIN blobs USING (blobId) WHERE noteId = ?",
+            [ noteId ]
+        );
+        expect(stored?.type).toBe("freeform");
+        expect(stored?.mime).toBe("application/json");
+        expect(stored?.content).toContain(token);
+
+        const contentQuery = encodeURIComponent(`note.content =*= ${token}`);
+        const full = await api.get<string[]>(`/api/search/${contentQuery}`);
+        expect(full.status).toBe(200);
+        expect(full.body).toContain(noteId);
+
+        const quick = await api.get<{
+            searchResultNoteIds: string[];
+            searchResults: Array<{ notePath: string; contentSnippet?: string }>;
+        }>(`/api/quick-search/${token}`);
+        expect(quick.status).toBe(200);
+        expect(quick.body.searchResultNoteIds).toContain(noteId);
+        const result = quick.body.searchResults.find((candidate) => candidate.notePath.endsWith(noteId));
+        expect(result?.contentSnippet).toContain(token);
+        expect(result?.contentSnippet).not.toContain("trilium-freeform");
     });
 
     it("lists template note ids including a freshly-labelled template", async () => {

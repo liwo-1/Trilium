@@ -1,4 +1,4 @@
-import { ALLOWED_NOTE_TYPES, getImageAttachmentTitle, type NoteType } from "@triliumnext/commons";
+import { ALLOWED_NOTE_TYPES, getImageAttachmentTitle, rewriteFreeformReferences, type NoteType } from "@triliumnext/commons";
 import { basename, dirname } from "../utils/path.js";
 import { getZipProvider, type ZipSource } from "../zip_provider.js";
 
@@ -494,6 +494,13 @@ async function importZip(taskContext: TaskContext<"importNotes">, source: ZipSou
 
         if (type === "mindMap" && typeof content === "string") {
             content = processMindMapContent(content);
+        }
+
+        if (type === "freeform" && typeof content === "string") {
+            content = rewriteFreeformReferences(content, {
+                attachmentId: getNewAttachmentId,
+                noteId: getNewNoteId
+            });
         }
 
         if (type === "relationMap" && noteMeta && typeof content === "string") {

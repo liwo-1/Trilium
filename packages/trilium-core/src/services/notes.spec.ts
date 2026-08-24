@@ -23,6 +23,7 @@ import { encodeUtf8 } from "./utils/binary.js";
  */
 
 let counter = 0;
+const FREEFORM_PROTECTED_KEY = encodeUtf8("abcdef0123456789");
 
 /**
  * Creates a fresh text note under the given parent in the real in-memory DB.
@@ -115,6 +116,8 @@ describe("notes service (real DB)", () => {
         // server suite setup (apps/server/spec/setup.ts), through which
         // co-located trilium-core specs run.
     });
+
+    afterEach(() => protectedSessionService.resetDataKey());
 
     describe("createNewNote", () => {
         it("creates a text note under root with content, branch and derived mime", () => {
@@ -587,6 +590,89 @@ describe("notes service (real DB)", () => {
             ).toBe(true);
         });
 
+        it("copies a foreign Freeform attachment using the target note protection state", () => {
+            const source = createNote("root", { title: "spec-freeform-copy-source" }).note;
+            const sourceAttachment = getContext().init(() => source.saveAttachment({
+                role: "image",
+                mime: "image/png",
+                title: "source.png",
+                content: "source-image"
+            }));
+
+            protectedSessionService.setDataKey(FREEFORM_PROTECTED_KEY);
+            const target = createNote("root", {
+                title: "spec-freeform-copy-target",
+                type: "freeform",
+                mime: "application/json",
+                isProtected: true
+            }).note;
+            const content = JSON.stringify({
+                type: "trilium-freeform",
+                version: 2,
+                gridVisible: false,
+                items: [{
+                    id: "image-1",
+                    type: "image",
+                    x: 80,
+                    y: 80,
+                    width: 480,
+                    height: 320,
+                    url: `api/attachments/${sourceAttachment.attachmentId}/image/source.png`,
+                    alt: ""
+                }]
+            });
+
+            const result = getContext().init(() => saveLinks(target, content));
+            const copiedAttachment = target.getAttachments()[0];
+            const saved = JSON.parse(result.content as string);
+
+            expect(copiedAttachment.attachmentId).not.toBe(sourceAttachment.attachmentId);
+            expect(copiedAttachment.isProtected).toBe(true);
+            expect(saved.items[0].url).toContain(`/attachments/${copiedAttachment.attachmentId}/image/`);
+        });
+
+        it("persists Freeform JSON and processes links inside rich-text boxes", () => {
+            const target = createNote("root", { title: "spec-freeform-target" });
+            const note = createNote("root", {
+                title: "spec-freeform-update",
+                type: "freeform",
+                mime: "application/json",
+                content: JSON.stringify({
+                    type: "trilium-freeform",
+                    version: 1,
+                    gridVisible: false,
+                    items: []
+                })
+            }).note;
+            const content = JSON.stringify({
+                type: "trilium-freeform",
+                version: 1,
+                gridVisible: true,
+                items: [{
+                    id: "text-1",
+                    type: "richText",
+                    x: 120,
+                    y: 240,
+                    width: 420,
+                    height: 180,
+                    html: `<p><a href="https://notes.example/#root/${target.note.noteId}">Target</a></p>`
+                }]
+            });
+
+            getContext().init(() => noteService.updateNoteData(note.noteId, content));
+
+            const saved = JSON.parse(note.getContent() as string);
+            const persisted = getSql().getValue<string>("SELECT content FROM blobs WHERE blobId = ?", [ note.blobId ]);
+            expect(saved.gridVisible).toBe(true);
+            expect(saved.items[0].html).toBe(`<p><a href="#root/${target.note.noteId}">Target</a></p>`);
+            expect(persisted).toBe(note.getContent());
+            expect(
+                note.getRelations().some((relation) => (
+                    relation.name === "internalLink" && relation.value === target.note.noteId
+                ))
+            ).toBe(true);
+        });
+
         it("throws when the note is not available", () => {
             expect(() => getContext().init(() => noteService.updateNoteData("doesNotExist99", "<p>x</p>"))).toThrow(
                 /not available for change/
@@ -656,6 +742,99 @@ describe("notes service (real DB)", () => {
             const after = revisionCount(note);
 
             expect(after).toBe(before + 1);
+        });
+
+        it("duplicates Freeform attachments and remaps links into the duplicated subtree", () => {
+            const original = createNote("root", {
+                title: "spec-freeform-duplicate",
+                type: "freeform",
+                mime: "application/json",
+                content: JSON.stringify({ type: "trilium-freeform", version: 2, gridVisible: false, items: [] })
+            });
+            const child = createNote(original.note.noteId, { title: "spec-freeform-duplicate-child" });
+            const attachment = getContext().init(() => original.note.saveAttachment({
+                role: "image",
+                mime: "image/png",
+                title: "diagram.png",
+                content: "diagram-bytes"
+            }));
+            getContext().init(() => original.note.setContent(JSON.stringify({
+                type: "trilium-freeform",
+                version: 2,
+                gridVisible: false,
+                items: [
+                    {
+                        id: "image-1",
+                        type: "image",
+                        x: 80,
+                        y: 80,
+                        width: 480,
+                        height: 320,
+                        url: `api/attachments/${attachment.attachmentId}/image/diagram.png`,
+                        alt: ""
+                    },
+                    {
+                        id: "text-1",
+                        type: "richText",
+                        x: 80,
+                        y: 440,
+                        width: 360,
+                        height: 180,
+                        html: `<p><a href="#root/${child.note.noteId}">Child</a></p>`
+                    }
+                ]
+            })));
+
+            const duplicate = getContext().init(() => noteService.duplicateSubtree(original.note.noteId, "root")).note;
+            const duplicatedAttachment = duplicate.getAttachments()[0];
+            const duplicatedChild = duplicate.getChildNotes()[0];
+            const duplicatedContent = duplicate.getContent() as string;
+
+            expect(duplicatedAttachment.attachmentId).not.toBe(attachment.attachmentId);
+            expect(duplicatedContent).toContain(`/attachments/${duplicatedAttachment.attachmentId}/image/`);
+            expect(duplicatedContent).toContain(`#root/${duplicatedChild.noteId}`);
+            expect(duplicatedContent).not.toContain(`#root/${child.note.noteId}`);
+        });
+
+        it("stores the complete Freeform document with revision-owned attachment references", () => {
+            const note = createNote("root", {
+                title: "spec-freeform-revision",
+                type: "freeform",
+                mime: "application/json",
+                content: JSON.stringify({ type: "trilium-freeform", version: 2, gridVisible: false, items: [] })
+            }).note;
+            const attachment = getContext().init(() => note.saveAttachment({
+                role: "image",
+                mime: "image/png",
+                title: "revision.png",
+                content: "revision-image"
+            }));
+            const content = JSON.stringify({
+                type: "trilium-freeform",
+                version: 2,
+                gridVisible: false,
+                items: [{
+                    id: "image-1",
+                    type: "image",
+                    x: 80,
+                    y: 80,
+                    width: 480,
+                    height: 320,
+                    url: `api/attachments/${attachment.attachmentId}/image/revision.png`,
+                    alt: ""
+                }]
+            });
+            getContext().init(() => note.setContent(content));
+
+            getContext().init(() => noteService.saveRevisionIfNeeded(note));
+
+            const revision = note.getRevisions().at(-1);
+            const revisionAttachment = revision?.getAttachments()[0];
+            expect(revision?.type).toBe("freeform");
+            expect(revision?.mime).toBe("application/json");
+            expect(revisionAttachment?.attachmentId).not.toBe(attachment.attachmentId);
+            expect(revision?.getContent()).toContain(`/attachments/${revisionAttachment?.attachmentId}/image/`);
+            expect(revision?.getContent()).not.toContain(`/attachments/${attachment.attachmentId}/image/`);
         });
 
         it("does nothing for notes with disableVersioning", () => {

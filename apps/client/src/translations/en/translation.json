@@ -4041,7 +4041,7 @@
     "add_text": "Add text box",
     "toggle_grid": "Toggle grid",
     "delete_selected": "Delete selected box",
-    "empty_hint": "Add a text box to start arranging your page.",
+    "empty_hint": "Double-click anywhere on the page to add a text box.",
     "invalid_content": "This Freeform page contains data this version cannot open."
   }
 }

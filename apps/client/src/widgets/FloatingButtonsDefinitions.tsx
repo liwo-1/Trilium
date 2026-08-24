@@ -103,7 +103,7 @@ function SwitchSplitOrientationButton({ note, isReadOnly, isDefaultViewMode }: F
 function ToggleReadOnlyButton({ note, isDefaultViewMode }: FloatingButtonContext) {
     const [ isReadOnly, setReadOnly ] = useNoteLabelBoolean(note, "readOnly");
     const isSavedSqlite = note.isTriliumSqlite() && !note.isHiddenCompletely();
-    const isEnabled = ([ "mindMap", "canvas", "spreadsheet" ].includes(note.type) || isSavedSqlite)
+    const isEnabled = ([ "mindMap", "canvas", "freeform", "spreadsheet" ].includes(note.type) || isSavedSqlite)
             && note.isContentAvailable() && isDefaultViewMode;
 
     return isEnabled && <FloatingButton

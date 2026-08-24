@@ -1,4 +1,5 @@
 import { extractLlmChatText } from "@triliumnext/commons/src/lib/llm/extract_chat_text.js";
+import { extractFreeformText } from "@triliumnext/commons";
 import normalizeString from "normalize-strings";
 import striptags from "striptags";
 
@@ -471,7 +472,7 @@ function extractContentSnippet(noteId: string, searchTokens: string[], maxLength
     try {
         let content: string | undefined;
 
-        if (["text", "code", "mermaid", "canvas", "mindMap", "llmChat"].includes(note.type)) {
+        if (["text", "code", "mermaid", "canvas", "mindMap", "freeform", "llmChat"].includes(note.type)) {
             // Protection is already accounted for: a note hands back its content decrypted, and hands
             // back nothing at all when there is no session to decrypt it with.
             const raw = note.getContent();
@@ -508,6 +509,8 @@ function extractContentSnippet(noteId: string, searchTokens: string[], maxLength
             // Decode HTML entities so the snippet shows real characters instead of escape codes
             // (e.g. "&lt;", "&amp;", "&nbsp;") — attribute-sourced text above is entity-encoded too.
             content = unescapeHtml(content).replace(/&nbsp;/g, " ");
+        } else if (note.type === "freeform") {
+            content = extractFreeformText(content);
         } else if (note.type === "llmChat") {
             // The note stores the whole conversation as a JSON blob; show the readable prose only.
             content = extractLlmChatText(content);

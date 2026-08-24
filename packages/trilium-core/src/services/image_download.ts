@@ -226,7 +226,12 @@ export function downloadImages(noteId: string, content: string) {
         }
     }
 
-    Promise.all(Object.values(downloadImagePromises)).then(() => {
+    const pendingDownloads = Object.values(downloadImagePromises);
+    if (pendingDownloads.length === 0) {
+        return content;
+    }
+
+    Promise.all(pendingDownloads).then(() => {
         setTimeout(() => {
             // the normal expected flow of the offline image saving is that users will paste the image(s)
             // which will get asynchronously downloaded, during that time they keep editing the note

@@ -98,7 +98,7 @@ const TPL = /*html*/`
     </div>
 </div>`;
 
-const SUPPORTED_NOTE_TYPES = ["text", "code", "render", "mindMap", "doc"];
+const SUPPORTED_NOTE_TYPES = ["text", "code", "render", "mindMap", "doc", "freeform"];
 const SUPPORTED_NOTE_IDS = ["_backendLog"];
 export default class FindWidget extends NoteContextAwareWidget {
 
@@ -273,6 +273,7 @@ export default class FindWidget extends NoteContextAwareWidget {
                 return readOnly ? this.htmlHandler : this.textHandler;
             case "mindMap":
             case "doc":
+            case "freeform":
                 return this.htmlHandler;
             default:
                 console.warn("FindWidget: Unsupported note type for find widget", this.note?.type);

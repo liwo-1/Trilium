@@ -1,4 +1,4 @@
-import { type AttachmentRow, attachmentRoleTraits, type AttributeRow, type BranchRow, dayjs, isEmbeddedAttachmentRole, isImageAttachmentRole, type NoteRow, NOTE_TYPE_IMAGE_ATTACHMENTS, type NoteType, parseMindMapNoteLink } from "@triliumnext/commons";
+import { type AttachmentRow, attachmentRoleTraits, type AttributeRow, type BranchRow, collectFreeformAttachmentIds, dayjs, isEmbeddedAttachmentRole, isImageAttachmentRole, parseFreeformContentDocument, rewriteFreeformReferences, type NoteRow, NOTE_TYPE_IMAGE_ATTACHMENTS, type NoteType, parseMindMapNoteLink } from "@triliumnext/commons";
 import { t } from "i18next";
 import { parse as parseHtml } from "node-html-parser";
 
@@ -501,10 +501,14 @@ export function checkImageAttachments(note: BNote, content: string) {
     if (!isCanvas) {
         let match;
 
-        // Spreadsheet and mind map content is JSON storing images as bare
+        // Spreadsheet, mind map and freeform content is JSON storing images as bare
         // `api/attachments/{id}/image/...` URLs (no `src="..."` wrapper), so they scan with the same
         // loose pattern as Markdown.
-        const patterns: { pattern: RegExp, previewPicture?: boolean }[] = (note.isMarkdown() || note.type === "spreadsheet" || note.type === "mindMap")
+        const patterns: { pattern: RegExp, previewPicture?: boolean }[] = (
+            note.isMarkdown()
+            || note.type === "spreadsheet"
+            || note.type === "mindMap"
+        )
             ? [
                 // ![...](api/attachments/{id}/image/...) or similar markdown image syntax
                 { pattern: /api\/attachments\/([a-zA-Z0-9_]+)\/image/g },
@@ -523,12 +527,18 @@ export function checkImageAttachments(note: BNote, content: string) {
                 { pattern: /href="[^"]+attachmentId=([a-zA-Z0-9_]+)/g }
             ];
 
-        for (const { pattern, previewPicture } of patterns) {
-            while ((match = pattern.exec(content))) {
-                foundAttachmentIds.add(match[1]);
+        if (note.type === "freeform") {
+            for (const attachmentId of collectFreeformAttachmentIds(content)) {
+                foundAttachmentIds.add(attachmentId);
+            }
+        } else {
+            for (const { pattern, previewPicture } of patterns) {
+                while ((match = pattern.exec(content))) {
+                    foundAttachmentIds.add(match[1]);
 
-                if (previewPicture) {
-                    previewPictureIds.add(match[1]);
+                    if (previewPicture) {
+                        previewPictureIds.add(match[1]);
+                    }
                 }
             }
         }
@@ -602,9 +612,17 @@ export function checkImageAttachments(note: BNote, content: string) {
         let localAttachment = note.getAttachments().find((att) => att.role === copiedRole && att.blobId === unknownAttachment.blobId);
 
         if (localAttachment) {
+            let attachmentChanged = false;
             if (localAttachment.utcDateScheduledForErasureSince) {
                 // the attachment is for sure linked now, so reset the scheduled deletion
                 localAttachment.utcDateScheduledForErasureSince = null;
+                attachmentChanged = true;
+            }
+            if (localAttachment.isProtected !== note.isProtected) {
+                localAttachment.isProtected = note.isProtected;
+                attachmentChanged = true;
+            }
+            if (attachmentChanged) {
                 localAttachment.save();
             }
 
@@ -615,6 +633,7 @@ export function checkImageAttachments(note: BNote, content: string) {
             localAttachment = unknownAttachment.copy();
             localAttachment.ownerId = note.noteId;
             localAttachment.role = copiedRole;
+            localAttachment.isProtected = note.isProtected;
             localAttachment.setContent(unknownAttachment.getContent(), { forceSave: true });
 
             ws.sendMessageToAllClients({ type: "toast", message: `Attachment '${localAttachment.title}' has been copied to note '${note.title}'.` });
@@ -627,12 +646,20 @@ export function checkImageAttachments(note: BNote, content: string) {
         // link) is referenced as many times as the note links that site. Leaving the rest pointing
         // at the foreign attachment made them resolve to another note's picture until a later save
         // happened to fix one more, each one announcing itself with a toast.
-        content = replaceAll(content, `api/attachments/${unknownAttachment.attachmentId}/image`, `api/attachments/${localAttachment.attachmentId}/image`);
-        // replace reference links
-        content = content.replace(
-            new RegExp(`href="[^"]+attachmentId=${unknownAttachment.attachmentId}[^"]*"`, "g"),
-            `href="#root/${localAttachment.ownerId}?viewMode=attachments&amp;attachmentId=${localAttachment.attachmentId}"`
-        );
+        if (note.type === "freeform") {
+            content = rewriteFreeformReferences(content, {
+                attachmentId: (attachmentId) => attachmentId === unknownAttachment.attachmentId
+                    ? localAttachment.attachmentId ?? attachmentId
+                    : attachmentId
+            });
+        } else {
+            content = replaceAll(content, `api/attachments/${unknownAttachment.attachmentId}/image`, `api/attachments/${localAttachment.attachmentId}/image`);
+            // replace reference links
+            content = content.replace(
+                new RegExp(`href="[^"]+attachmentId=${unknownAttachment.attachmentId}[^"]*"`, "g"),
+                `href="#root/${localAttachment.ownerId}?viewMode=attachments&amp;attachmentId=${localAttachment.attachmentId}"`
+            );
+        }
     }
 
     return {
@@ -970,7 +997,11 @@ function stripStaleSrcset(content: string): string {
 
 
 export function saveLinks(note: BNote, content: string | Uint8Array) {
-    if ((note.type !== "text" && note.type !== "relationMap" && note.type !== "llmChat" && note.type !== "spreadsheet" && note.type !== "canvas" && note.type !== "mindMap" && !note.isMarkdown()) || (note.isProtected && !protectedSessionService.isProtectedSessionAvailable())) {
+    const supportedTypes = [
+        "text", "relationMap", "llmChat", "spreadsheet", "canvas", "mindMap", "freeform"
+    ];
+    if ((!supportedTypes.includes(note.type) && !note.isMarkdown())
+        || (note.isProtected && !protectedSessionService.isProtectedSessionAvailable())) {
         return {
             forceFrontendReload: false,
             content
@@ -998,6 +1029,16 @@ export function saveLinks(note: BNote, content: string | Uint8Array) {
         // Spreadsheet images are stored as attachments referenced from the workbook JSON; scan for
         // orphans (inserted-then-removed images) so they get scheduled for erasure. There are no
         // Trilium internal links to extract from spreadsheet content.
+        ({ forceFrontendReload, content } = checkImageAttachments(note, content));
+    } else if (note.type === "freeform" && typeof content === "string") {
+        const processed = processFreeformContent(note, content, foundLinks);
+        content = processed.content;
+        if (processed.htmlContent !== null) {
+            saveBookmarks(note, processed.htmlContent);
+        }
+
+        // Freeform images are attachments referenced by URL from the page JSON. The standard orphan
+        // scan also copies attachments when an item is pasted from a different Freeform note.
         ({ forceFrontendReload, content } = checkImageAttachments(note, content));
     } else if (note.type === "canvas" && typeof content === "string") {
         // Canvas images are stored as attachments titled with the Excalidraw fileId referenced from
@@ -1048,6 +1089,44 @@ export function saveLinks(note: BNote, content: string | Uint8Array) {
     }
 
     return { forceFrontendReload, content };
+}
+
+function processFreeformContent(note: BNote, content: string, foundLinks: FoundLink[]) {
+    const parsed = parseFreeformContentDocument(content);
+    if (!parsed) {
+        return { content, htmlContent: null };
+    }
+
+    let changed = false;
+    const htmlFragments: string[] = [];
+    for (const candidate of parsed.items) {
+        if (!candidate || typeof candidate !== "object") {
+            continue;
+        }
+
+        const item = candidate as { type?: unknown; html?: unknown };
+        if (item.type !== "richText" || typeof item.html !== "string") {
+            continue;
+        }
+
+        const originalHtml = item.html;
+        let html = downloadImages(note.noteId, originalHtml);
+        html = saveAttachments(note, html);
+        html = findImageLinks(html, foundLinks);
+        html = findInternalLinks(html, foundLinks);
+        html = findIncludeNoteLinks(html, foundLinks);
+        htmlFragments.push(html);
+
+        if (html !== originalHtml) {
+            item.html = html;
+            changed = true;
+        }
+    }
+
+    return {
+        content: changed ? JSON.stringify(parsed) : content,
+        htmlContent: htmlFragments.join("\n")
+    };
 }
 
 function saveRevisionIfNeeded(note: BNote) {
@@ -1289,7 +1368,7 @@ function getUndeletedParentBranchIds(noteId: string, deleteId: string) {
 function scanForLinks(note: BNote, content: string | Uint8Array) {
     // A mind map is scanned here as well as on save, so that one arriving by import carries its
     // links to the notes it points at without having to be opened and edited first.
-    if (!note || !["text", "relationMap", "mindMap"].includes(note.type)) {
+    if (!note || !["text", "relationMap", "mindMap", "freeform"].includes(note.type)) {
         return;
     }
 
@@ -1409,6 +1488,24 @@ function duplicateSubtreeInner(origNote: BNote, origBranch: BBranch | null | und
         if (typeof content === "string" && ["text", "relationMap", "search"].includes(origNote.type)) {
             // fix links in the content
             content = replaceByMap(content, noteIdMapping);
+        }
+
+        const attachmentIdMapping: Record<string, string> = {};
+        for (const originalAttachment of origNote.getAttachments()) {
+            const duplicatedAttachment = originalAttachment.copy();
+            duplicatedAttachment.ownerId = newNote.noteId;
+            duplicatedAttachment.isProtected = newNote.isProtected;
+            duplicatedAttachment.setContent(originalAttachment.getContent(), { forceSave: true });
+            if (originalAttachment.attachmentId && duplicatedAttachment.attachmentId) {
+                attachmentIdMapping[originalAttachment.attachmentId] = duplicatedAttachment.attachmentId;
+            }
+        }
+
+        if (origNote.type === "freeform" && typeof content === "string") {
+            content = rewriteFreeformReferences(content, {
+                attachmentId: (attachmentId) => attachmentIdMapping[attachmentId] ?? attachmentId,
+                noteId: (noteId) => noteIdMapping[noteId] ?? noteId
+            });
         }
 
         newNote.setContent(content);

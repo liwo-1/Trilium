@@ -6,6 +6,7 @@ import Button, { ButtonProps } from "./Button";
 import { FormListItem, FormListItemOpts } from "./FormList";
 
 export interface FormFileUploadProps {
+    accept?: string;
     name?: string;
     onChange: (files: FileList | null) => void;
     multiple?: boolean;
@@ -13,7 +14,7 @@ export interface FormFileUploadProps {
     inputRef?: Ref<HTMLInputElement>;
 }
 
-export default function FormFileUpload({ inputRef, name, onChange, multiple, hidden }: FormFileUploadProps) {
+export default function FormFileUpload({ accept, inputRef, name, onChange, multiple, hidden }: FormFileUploadProps) {
     // Prevent accidental reuse of a file selected in a previous instance of the upload form.
     useEffect(() => {
         onChange(null);
@@ -23,6 +24,7 @@ export default function FormFileUpload({ inputRef, name, onChange, multiple, hid
         <label class="tn-file-input tn-input-field" style={hidden ? { display: "none" } : undefined}>
             <input
                 ref={inputRef}
+                accept={accept}
                 name={name}
                 type="file"
                 class="form-control-file"

@@ -81,7 +81,7 @@ export function NoteContextMenu({ note, noteContext, itemsAtStart, itemsNearNote
     const canBeConvertedToAttachment = note?.isEligibleForConversionToAttachment();
     const isSourceView = noteContext?.viewScope?.viewMode === "source";
     const isSearchable = isSourceView
-        || ["text", "code", "book", "mindMap", "doc", "spreadsheet"].includes(noteType)
+        || ["text", "code", "book", "mindMap", "doc", "spreadsheet", "freeform"].includes(noteType)
         || (noteType === "file" && note.mime === "application/pdf")
         || (note.noteId === "_backendLog");
     const isInOptionsOrHelp = note?.noteId.startsWith("_options") || note?.noteId.startsWith("_help");

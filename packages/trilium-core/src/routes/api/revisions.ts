@@ -3,7 +3,8 @@ import {
     EraseExcessRevisionsOptions,
     EraseExcessRevisionsResponse,
     RevisionItem,
-    RevisionPojo
+    RevisionPojo,
+    rewriteFreeformReferences
 } from "@triliumnext/commons";
 import type { Request, Response } from "express";
 
@@ -16,6 +17,7 @@ import { NotePojo } from "../../becca/becca-interface.js";
 import { becca_service, binary_utils, cls, getSql } from "../../index.js";
 import { formatDownloadTitle, getContentDisposition } from "../../services/utils/index.js";
 import { extname } from "../../services/utils/path.js";
+import { saveLinks } from "../../services/notes.js";
 
 interface NotePath {
     noteId: string;
@@ -185,21 +187,34 @@ function restoreRevision(req: Request<{ revisionId: string }>) {
 
             let revisionContent = revision.getContent();
 
+            const attachmentIdMapping: Record<string, string> = {};
             for (const revisionAttachment of revision.getAttachments()) {
                 const noteAttachment = revisionAttachment.copy();
                 noteAttachment.ownerId = note.noteId;
+                noteAttachment.isProtected = revision.isProtected;
                 noteAttachment.setContent(revisionAttachment.getContent(), { forceSave: true });
 
+                if (revisionAttachment.attachmentId && noteAttachment.attachmentId) {
+                    attachmentIdMapping[revisionAttachment.attachmentId] = noteAttachment.attachmentId;
+                }
+
                 // content is rewritten to point to the restored revision attachments
-                if (typeof revisionContent === "string") {
+                if (revision.type !== "freeform" && typeof revisionContent === "string") {
                     revisionContent = revisionContent.replaceAll(`attachments/${revisionAttachment.attachmentId}`, `attachments/${noteAttachment.attachmentId}`);
                 }
+            }
+
+            if (revision.type === "freeform" && typeof revisionContent === "string") {
+                revisionContent = rewriteFreeformReferences(revisionContent, {
+                    attachmentId: (attachmentId) => attachmentIdMapping[attachmentId] ?? attachmentId
+                });
             }
 
             note.title = revision.title;
             note.mime = revision.mime;
             note.type = revision.type;
-            note.setContent(revisionContent, { forceSave: true });
+            const processed = saveLinks(note, revisionContent);
+            note.setContent(processed.content, { forceSave: true, forceFrontendReload: processed.forceFrontendReload });
         });
     }
 }
