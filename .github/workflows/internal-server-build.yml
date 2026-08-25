@@ -32,3 +32,4 @@ jobs:
           name: TriliumNotes-Server-Freeform-Test-linux-x64
           path: upload/*.tar.xz
           if-no-files-found: error
+          retention-days: 14
