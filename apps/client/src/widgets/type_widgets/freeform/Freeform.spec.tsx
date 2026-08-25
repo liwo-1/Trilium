@@ -236,6 +236,27 @@ describe("Freeform editor lifecycle", () => {
         expect(toolbarHost.classList.contains("inactive")).toBe(false);
     });
 
+    it("does not write a new text box's empty content into the previous editor", async () => {
+        const note = createNote("page-a", [
+            {
+                id: "text-a",
+                type: "richText",
+                x: 40,
+                y: 40,
+                width: 300,
+                height: 120,
+                html: "<p>Existing text</p>"
+            }
+        ]);
+        await mount(note);
+        const previousEditor = testState.createdEditors[0];
+        previousEditor.setData.mockClear();
+
+        await click(requireElement<HTMLButtonElement>('button[aria-label="freeform.add_text"]'));
+
+        expect(previousEditor.setData).not.toHaveBeenCalledWith("<p></p>");
+    });
+
     it("does not write locally emitted rapid typing back into CKEditor", async () => {
         const note = createNote("page-a", [
             { id: "text-a", type: "richText", x: 40, y: 40, width: 300, height: 120, html: "<p></p>" }

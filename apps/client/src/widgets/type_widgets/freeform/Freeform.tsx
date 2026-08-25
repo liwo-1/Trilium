@@ -823,6 +823,7 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                         />
                     </OverlayControlGroup>}
                     {item.type === "richText" ? <FreeformTextItem
+                        activeWatchdogRef={activeWatchdogRef}
                         editorApiRef={activeEditorApiRef}
                         html={item.html}
                         language={language}
@@ -830,7 +831,6 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                         readOnly={readOnly}
                         editing={activeTextItemId === item.id}
                         templates={templates}
-                        watchdogRef={activeWatchdogRef}
                         onChange={(html) => updateRichText(item.id, html)}
                         onEditorInitialized={(editor) => attachFormattingToolbar(editor, item.id)}
                         onWidthChange={(width) => {
@@ -870,6 +870,7 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
 }
 
 interface FreeformTextItemProps {
+    activeWatchdogRef: RefObject<EditorWatchdog>;
     editorApiRef: RefObject<CKEditorApi>;
     html: string;
     language: string | null | undefined;
@@ -877,7 +878,6 @@ interface FreeformTextItemProps {
     readOnly: boolean;
     editing: boolean;
     templates: SnippetDefinition[];
-    watchdogRef: RefObject<EditorWatchdog>;
     onChange: (html: string) => void;
     onEditorInitialized: (editor: CKTextEditor) => void;
     onWidthChange: (width: number) => void;
@@ -886,6 +886,7 @@ interface FreeformTextItemProps {
 }
 
 function FreeformTextItem({
+    activeWatchdogRef,
     editorApiRef,
     html,
     language,
@@ -893,7 +894,6 @@ function FreeformTextItem({
     readOnly,
     editing,
     templates,
-    watchdogRef,
     onChange,
     onEditorInitialized,
     onWidthChange,
@@ -901,6 +901,7 @@ function FreeformTextItem({
     onSelect
 }: FreeformTextItemProps) {
     const contentRef = useRef<HTMLDivElement>(null);
+    const itemWatchdogRef = useRef<EditorWatchdog>(null);
     const sizeProbeRef = useRef<HTMLDivElement>(null);
     const htmlRef = useRef(html);
     const pendingLocalHtmlRef = useRef<string[]>([]);
@@ -912,7 +913,7 @@ function FreeformTextItem({
     onHeightChangeRef.current = onHeightChange;
 
     const handleChange = useCallback(() => {
-        const updatedHtml = watchdogRef.current?.editor?.getData();
+        const updatedHtml = itemWatchdogRef.current?.editor?.getData();
         if (updatedHtml === undefined || updatedHtml === htmlRef.current) {
             return;
         }
@@ -923,7 +924,7 @@ function FreeformTextItem({
     }, []);
 
     useEffect(() => {
-        const editor = watchdogRef.current?.editor;
+        const editor = itemWatchdogRef.current?.editor;
         const pendingLocalHtml = pendingLocalHtmlRef.current;
         const localUpdateIndex = pendingLocalHtml.indexOf(html);
         if (localUpdateIndex >= 0) {
@@ -938,6 +939,12 @@ function FreeformTextItem({
             editor.setData(html);
         }
     }, [ html ]);
+
+    useEffect(() => {
+        if (!editing && activeWatchdogRef.current === itemWatchdogRef.current) {
+            activeWatchdogRef.current = null;
+        }
+    }, [ activeWatchdogRef, editing ]);
 
     useEffect(() => {
         const element = contentRef.current;
@@ -1007,12 +1014,13 @@ function FreeformTextItem({
                     isClassicEditor
                     onChange={handleChange}
                     onEditorInitialized={(editor) => {
+                        activeWatchdogRef.current = itemWatchdogRef.current;
                         editor.setData(htmlRef.current);
                         enableSelectedElementDeletion(editor);
                         onEditorInitialized(editor);
                     }}
                     templates={templates}
-                    watchdogRef={watchdogRef}
+                    watchdogRef={itemWatchdogRef}
                 />
             </div>
         </>
