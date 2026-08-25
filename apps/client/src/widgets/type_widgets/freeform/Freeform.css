@@ -27,6 +27,7 @@
         --ck-color-button-default-disabled-background: transparent;
         min-height: 39px;
         margin-inline-start: 130px;
+        margin-inline-end: 150px;
 
         &.inactive {
             opacity: .45;
@@ -42,12 +43,18 @@
         }
     }
 
+    & .freeform-zoom-controls {
+        --overlay-group-inset: 4px;
+        z-index: 3;
+    }
+
     & .freeform-surface {
         position: relative;
         width: var(--freeform-canvas-width);
         min-width: 100%;
         height: var(--freeform-canvas-height);
         min-height: 100%;
+        zoom: var(--freeform-canvas-zoom);
         background-color: var(--main-background-color);
         outline: none;
 
@@ -62,19 +69,19 @@
     & .freeform-empty-hint {
         position: absolute;
         top: 88px;
-        left: 96px;
+        inset-inline-start: 96px;
         color: var(--muted-text-color);
         pointer-events: none;
     }
 
     & .freeform-item {
         position: absolute;
-        left: var(--freeform-item-x);
+        inset-inline-start: var(--freeform-item-x);
         top: var(--freeform-item-y);
         width: var(--freeform-item-width);
         min-width: 160px;
         min-height: 80px;
-        max-width: 960px;
+        max-width: none;
         overflow: hidden;
         border: 1px solid transparent;
         border-radius: 3px;
@@ -122,7 +129,7 @@
         position: absolute;
         z-index: 3;
         top: 4px;
-        left: 50%;
+        inset-inline-start: 50%;
         width: 36px;
         height: 9px;
         border: 1px solid color-mix(in srgb, var(--main-text-color) 18%, transparent);
@@ -152,6 +159,17 @@
         box-sizing: border-box;
         min-height: 80px;
         background: transparent;
+    }
+
+    & .freeform-item-size-probe {
+        position: absolute;
+        width: max-content;
+        min-width: 160px;
+        max-width: none;
+        padding: 16px;
+        visibility: hidden;
+        white-space: nowrap;
+        pointer-events: none;
     }
 
     & .freeform-item-editor,

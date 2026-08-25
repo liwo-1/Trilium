@@ -9,6 +9,9 @@ export const FREEFORM_CLIPBOARD_MIME = "application/x-trilium-freeform-item";
 const FREEFORM_CANVAS_PADDING = 192;
 const FREEFORM_POSITION_MAX = 100_000;
 const FREEFORM_ITEM_MAX_HEIGHT = 10_000;
+const FREEFORM_TEXT_AUTOSIZE_INLINE_ALLOWANCE = 16;
+export const FREEFORM_TEXT_MIN_WIDTH = 160;
+export const FREEFORM_TEXT_MAX_WIDTH = FREEFORM_POSITION_MAX;
 
 interface FreeformItemBase {
     id: string;
@@ -81,6 +84,21 @@ export function getFreeformCanvasExtent(items: FreeformItem[]): FreeformCanvasEx
         height = Math.max(height, item.y + item.height + FREEFORM_CANVAS_PADDING);
     }
     return { width, height };
+}
+
+export function getFreeformTextAutoWidth(currentWidth: number, measuredWidth: number) {
+    if (!Number.isFinite(measuredWidth)) {
+        return currentWidth;
+    }
+
+    return Math.min(
+        FREEFORM_TEXT_MAX_WIDTH,
+        Math.max(
+            currentWidth,
+            FREEFORM_TEXT_MIN_WIDTH,
+            Math.ceil(measuredWidth + FREEFORM_TEXT_AUTOSIZE_INLINE_ALLOWANCE)
+        )
+    );
 }
 
 export function parseFreeformDocument(content: string): FreeformParseResult {
@@ -191,7 +209,7 @@ function normalizeItem(item: unknown): FreeformItem | null {
     if (candidate.type === "richText" && typeof candidate.html === "string") {
         const geometry = {
             ...position,
-            width: clampNumber(candidate.width, 160, 960, 360),
+            width: clampNumber(candidate.width, FREEFORM_TEXT_MIN_WIDTH, FREEFORM_TEXT_MAX_WIDTH, 360),
             height: clampNumber(candidate.height, 80, FREEFORM_ITEM_MAX_HEIGHT, 180)
         };
         const manualHeight = typeof candidate.manualHeight === "number"

@@ -42,6 +42,7 @@ import {
     FreeformItem,
     FreeformItemChanges,
     getFreeformCanvasExtent,
+    getFreeformTextAutoWidth,
     parseFreeformDocument,
     parseFreeformItemClipboard,
     serializeFreeformItem
@@ -54,16 +55,21 @@ interface DragState {
     startClientY: number;
     startX: number;
     startY: number;
+    zoom: number;
     startDocument: FreeformDocument;
 }
 
 type FreeformDocumentUpdateMode = "commit" | "transient" | "synchronize";
+const FREEFORM_ZOOM_MIN = 0.25;
+const FREEFORM_ZOOM_MAX = 2;
+const FREEFORM_ZOOM_STEP = 0.25;
 
 export default function Freeform({ note, noteContext, parentComponent }: TypeWidgetProps) {
     const [ document, setDocument ] = useState<FreeformDocument>();
     const [ selectedItemId, setSelectedItemId ] = useState<string>();
     const [ activeTextItemId, setActiveTextItemId ] = useState<string>();
     const [ canvasExtent, setCanvasExtent ] = useState<FreeformCanvasExtent>({ width: 0, height: 0 });
+    const [ zoom, setZoom ] = useState(1);
     const [ hasLoadError, setHasLoadError ] = useState(false);
     const [ isUploadingImage, setIsUploadingImage ] = useState(false);
     const documentRef = useRef<FreeformDocument>();
@@ -94,6 +100,7 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
     useEffect(() => {
         uploadGenerationRef.current += 1;
         setIsUploadingImage(false);
+        setZoom(1);
     }, [ note.noteId ]);
 
     const spacedUpdate = useEditorSpacedUpdate({
@@ -525,6 +532,7 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
             startClientY: event.clientY,
             startX: item.x,
             startY: item.y,
+            zoom,
             startDocument
         };
         setSelectedItemId(item.id);
@@ -574,8 +582,8 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
         }
 
         updateItem(drag.itemId, {
-            x: Math.max(0, drag.startX + event.clientX - drag.startClientX),
-            y: Math.max(0, drag.startY + event.clientY - drag.startClientY)
+            x: Math.max(0, drag.startX + (event.clientX - drag.startClientX) / drag.zoom),
+            y: Math.max(0, drag.startY + (event.clientY - drag.startClientY) / drag.zoom)
         }, "transient");
     }
 
@@ -685,6 +693,29 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                     ref={toolbarContainerRef}
                     className={`freeform-formatting-toolbar ${activeTextItemId && activeTextItemId === selectedItemId && !readOnly ? "" : "inactive"}`}
                 />
+                <OverlayControlGroup
+                    className="freeform-zoom-controls"
+                    placement="top-end"
+                    overCanvas
+                >
+                    <OverlayControlButton
+                        title={t("svg.zoom_out")}
+                        icon="bx-minus-circle"
+                        disabled={zoom <= FREEFORM_ZOOM_MIN}
+                        onClick={() => setZoom((current) => Math.max(FREEFORM_ZOOM_MIN, current - FREEFORM_ZOOM_STEP))}
+                    />
+                    <OverlayControlButton
+                        title={t("svg.reset_zoom")}
+                        text={`${Math.round(zoom * 100)}%`}
+                        onClick={() => setZoom(1)}
+                    />
+                    <OverlayControlButton
+                        title={t("svg.zoom_in")}
+                        icon="bx-plus-circle"
+                        disabled={zoom >= FREEFORM_ZOOM_MAX}
+                        onClick={() => setZoom((current) => Math.min(FREEFORM_ZOOM_MAX, current + FREEFORM_ZOOM_STEP))}
+                    />
+                </OverlayControlGroup>
             </div>
 
             <div
@@ -692,7 +723,8 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                 className={`freeform-surface ${document.gridVisible ? "grid-visible" : ""}`}
                 style={{
                     "--freeform-canvas-width": `${Math.max(1, canvasExtent.width)}px`,
-                    "--freeform-canvas-height": `${Math.max(1, canvasExtent.height)}px`
+                    "--freeform-canvas-height": `${Math.max(1, canvasExtent.height)}px`,
+                    "--freeform-canvas-zoom": zoom
                 }}
                 tabIndex={readOnly ? undefined : 0}
                 onCopy={handleCanvasCopy}
@@ -706,8 +738,8 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                     event.preventDefault();
                     const bounds = event.currentTarget.getBoundingClientRect();
                     addTextBox({
-                        x: Math.max(0, event.clientX - bounds.left),
-                        y: Math.max(0, event.clientY - bounds.top)
+                        x: Math.max(0, (event.clientX - bounds.left) / zoom),
+                        y: Math.max(0, (event.clientY - bounds.top) / zoom)
                     });
                 }}
                 onPointerDown={(event) => {
@@ -717,8 +749,8 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                         const surface = event.currentTarget;
                         const bounds = surface.getBoundingClientRect();
                         insertionPointRef.current = {
-                            x: Math.max(0, event.clientX - bounds.left),
-                            y: Math.max(0, event.clientY - bounds.top)
+                            x: Math.max(0, (event.clientX - bounds.left) / zoom),
+                            y: Math.max(0, (event.clientY - bounds.top) / zoom)
                         };
                         surface.focus({ preventScroll: true });
                     }
@@ -801,6 +833,16 @@ export default function Freeform({ note, noteContext, parentComponent }: TypeWid
                         watchdogRef={activeWatchdogRef}
                         onChange={(html) => updateRichText(item.id, html)}
                         onEditorInitialized={(editor) => attachFormattingToolbar(editor, item.id)}
+                        onWidthChange={(width) => {
+                            if (resizingItemIdRef.current === item.id) {
+                                return;
+                            }
+
+                            const autoWidth = getFreeformTextAutoWidth(item.width, width);
+                            if (Math.abs(autoWidth - item.width) > 1) {
+                                updateItem(item.id, { width: autoWidth }, "synchronize");
+                            }
+                        }}
                         onHeightChange={(height) => {
                             if (resizingItemIdRef.current === item.id) {
                                 return;
@@ -838,6 +880,7 @@ interface FreeformTextItemProps {
     watchdogRef: RefObject<EditorWatchdog>;
     onChange: (html: string) => void;
     onEditorInitialized: (editor: CKTextEditor) => void;
+    onWidthChange: (width: number) => void;
     onHeightChange: (height: number) => void;
     onSelect: () => void;
 }
@@ -853,14 +896,19 @@ function FreeformTextItem({
     watchdogRef,
     onChange,
     onEditorInitialized,
+    onWidthChange,
     onHeightChange,
     onSelect
 }: FreeformTextItemProps) {
     const contentRef = useRef<HTMLDivElement>(null);
+    const sizeProbeRef = useRef<HTMLDivElement>(null);
     const htmlRef = useRef(html);
+    const pendingLocalHtmlRef = useRef<string[]>([]);
     const onChangeRef = useRef(onChange);
+    const onWidthChangeRef = useRef(onWidthChange);
     const onHeightChangeRef = useRef(onHeightChange);
     onChangeRef.current = onChange;
+    onWidthChangeRef.current = onWidthChange;
     onHeightChangeRef.current = onHeightChange;
 
     const handleChange = useCallback(() => {
@@ -870,11 +918,21 @@ function FreeformTextItem({
         }
 
         htmlRef.current = updatedHtml;
+        pendingLocalHtmlRef.current.push(updatedHtml);
         onChangeRef.current(updatedHtml);
     }, []);
 
     useEffect(() => {
         const editor = watchdogRef.current?.editor;
+        const pendingLocalHtml = pendingLocalHtmlRef.current;
+        const localUpdateIndex = pendingLocalHtml.indexOf(html);
+        if (localUpdateIndex >= 0) {
+            pendingLocalHtml.splice(0, localUpdateIndex + 1);
+            htmlRef.current = editor?.getData() ?? html;
+            return;
+        }
+
+        pendingLocalHtml.length = 0;
         htmlRef.current = html;
         if (editor && editor.getData() !== html) {
             editor.setData(html);
@@ -893,7 +951,8 @@ function FreeformTextItem({
 
     useEffect(() => {
         const element = contentRef.current;
-        if (!element) {
+        const sizeProbe = sizeProbeRef.current;
+        if (!element || !sizeProbe) {
             return;
         }
 
@@ -905,11 +964,17 @@ function FreeformTextItem({
 
             animationFrame = requestAnimationFrame(() => {
                 animationFrame = undefined;
+                const itemElement = element.closest<HTMLElement>(".freeform-item");
+                const horizontalChrome = itemElement
+                    ? Math.max(0, itemElement.offsetWidth - itemElement.clientWidth)
+                    : 0;
+                onWidthChangeRef.current(Math.ceil(sizeProbe.scrollWidth + horizontalChrome));
                 onHeightChangeRef.current(Math.ceil(element.scrollHeight));
             });
         };
         const observer = new ResizeObserver(measure);
         observer.observe(element);
+        observer.observe(sizeProbe);
         measure();
 
         return () => {
@@ -921,31 +986,46 @@ function FreeformTextItem({
     }, [ editing, readOnly ]);
 
     if (!editing || readOnly) {
-        return <div
-            ref={contentRef}
-            className="freeform-item-preview ck-content use-tn-links"
-            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
-        />;
+        return <>
+            <FreeformTextSizeProbe probeRef={sizeProbeRef} html={html} />
+            <div
+                ref={contentRef}
+                className="freeform-item-preview ck-content use-tn-links"
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
+            />
+        </>;
     }
 
     return (
-        <div ref={contentRef} className="freeform-item-editor-shell" onFocusCapture={onSelect}>
-            <CKEditorWithWatchdog
-                className="freeform-item-editor note-detail-editable-text-editor use-tn-links"
-                contentLanguage={language}
-                editorApi={editorApiRef}
-                isClassicEditor
-                onChange={handleChange}
-                onEditorInitialized={(editor) => {
-                    editor.setData(htmlRef.current);
-                    enableSelectedElementDeletion(editor);
-                    onEditorInitialized(editor);
-                }}
-                templates={templates}
-                watchdogRef={watchdogRef}
-            />
-        </div>
+        <>
+            <FreeformTextSizeProbe probeRef={sizeProbeRef} html={html} />
+            <div ref={contentRef} className="freeform-item-editor-shell" onFocusCapture={onSelect}>
+                <CKEditorWithWatchdog
+                    className="freeform-item-editor note-detail-editable-text-editor use-tn-links"
+                    contentLanguage={language}
+                    editorApi={editorApiRef}
+                    isClassicEditor
+                    onChange={handleChange}
+                    onEditorInitialized={(editor) => {
+                        editor.setData(htmlRef.current);
+                        enableSelectedElementDeletion(editor);
+                        onEditorInitialized(editor);
+                    }}
+                    templates={templates}
+                    watchdogRef={watchdogRef}
+                />
+            </div>
+        </>
     );
+}
+
+function FreeformTextSizeProbe({ probeRef, html }: { probeRef: RefObject<HTMLDivElement>; html: string }) {
+    return <div
+        ref={probeRef}
+        className="freeform-item-size-probe ck-content"
+        aria-hidden="true"
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
+    />;
 }
 
 function enableSelectedElementDeletion(editor: CKTextEditor) {

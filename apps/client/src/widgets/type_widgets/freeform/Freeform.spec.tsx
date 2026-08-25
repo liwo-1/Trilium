@@ -3,8 +3,14 @@ import { act } from "preact/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const testState = vi.hoisted(() => ({
+    createdEditors: [] as Array<{
+        getData: ReturnType<typeof vi.fn>;
+        setData: ReturnType<typeof vi.fn>;
+        triggerChange: (html: string) => void;
+    }>,
     createdToolbars: [] as HTMLElement[],
     readOnly: false,
+    resizeCallbacks: [] as ResizeObserverCallback[],
     uploadFreeformImage: vi.fn(),
     removeUploadedFreeformImage: vi.fn(async () => {})
 }));
@@ -56,11 +62,12 @@ vi.mock("../../react/OverlayControlGroup", async () => {
     const { h } = await import("preact");
     return {
         default: (props: { className?: string; children: ComponentChildren }) => h("div", { class: props.className }, props.children),
-        OverlayControlButton: (props: { title?: string; onClick?: () => void; disabled?: boolean }) => h("button", {
+        OverlayControlButton: (props: { className?: string; text?: ComponentChildren; title?: string; onClick?: () => void; disabled?: boolean }) => h("button", {
             "aria-label": props.title,
+            class: props.className,
             disabled: props.disabled,
             onClick: props.onClick
-        })
+        }, props.text)
     };
 });
 vi.mock("../../react/hooks", async () => {
@@ -95,6 +102,7 @@ vi.mock("../text/CKEditorWithWatchdog", async () => {
     return {
         default: (props: {
             className: string;
+            onChange: () => void;
             onEditorInitialized: (editor: unknown) => void;
             watchdogRef: { current?: unknown };
         }) => {
@@ -111,17 +119,25 @@ vi.mock("../text/CKEditorWithWatchdog", async () => {
                     toolbar.append(document.createElement("button"));
                     testState.createdToolbars.push(toolbar);
 
+                    let data = "<p>Text</p>";
                     const editor = {
                         editing: { view: { focus: vi.fn() } },
-                        getData: vi.fn(() => "<p>Text</p>"),
+                        getData: vi.fn(() => data),
                         model: { document: { selection: { getSelectedElement: () => undefined } } },
                         once: vi.fn(),
-                        setData: vi.fn(),
+                        setData: vi.fn((html: string) => {
+                            data = html;
+                        }),
+                        triggerChange(html: string) {
+                            data = html;
+                            props.onChange();
+                        },
                         ui: {
                             getEditableElement: () => editableRef.current,
                             view: { toolbar: { element: toolbar } }
                         }
                     };
+                    testState.createdEditors.push(editor);
                     props.watchdogRef.current = { editor };
                     props.onEditorInitialized(editor);
                 });
@@ -148,15 +164,25 @@ interface TestNote {
 let container: HTMLDivElement;
 
 beforeEach(() => {
+    testState.createdEditors.length = 0;
     testState.createdToolbars.length = 0;
+    testState.resizeCallbacks.length = 0;
     testState.readOnly = false;
     testState.uploadFreeformImage.mockReset();
     testState.removeUploadedFreeformImage.mockClear();
     vi.stubGlobal("$", (element: unknown) => element);
     vi.stubGlobal("ResizeObserver", class {
+        constructor(callback: ResizeObserverCallback) {
+            testState.resizeCallbacks.push(callback);
+        }
+
         observe() {}
         disconnect() {}
     });
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => (
+        window.setTimeout(() => callback(performance.now()), 0)
+    ));
+    vi.stubGlobal("cancelAnimationFrame", (handle: number) => window.clearTimeout(handle));
     container = document.createElement("div");
     document.body.appendChild(container);
 });
@@ -208,6 +234,113 @@ describe("Freeform editor lifecycle", () => {
         expect(toolbarHost.firstElementChild).toBe(testState.createdToolbars[1]);
         expect(toolbarHost.firstElementChild).not.toBe(firstToolbar);
         expect(toolbarHost.classList.contains("inactive")).toBe(false);
+    });
+
+    it("does not write locally emitted rapid typing back into CKEditor", async () => {
+        const note = createNote("page-a", [
+            { id: "text-a", type: "richText", x: 40, y: 40, width: 300, height: 120, html: "<p></p>" }
+        ]);
+        await mount(note);
+        const editor = testState.createdEditors[0];
+        editor.setData.mockClear();
+
+        await act(async () => {
+            editor.triggerChange("<p>A</p>");
+            editor.triggerChange("<p>AB</p>");
+            editor.triggerChange("<p>ABC</p>");
+        });
+
+        expect(editor.setData).not.toHaveBeenCalled();
+    });
+
+    it("zooms the canvas without scaling the editor toolbar", async () => {
+        const note = createNote("page-a", []);
+        await mount(note);
+        const surface = requireElement<HTMLElement>(".freeform-surface");
+        const zoomOut = requireElement<HTMLButtonElement>('button[aria-label="svg.zoom_out"]');
+        const zoomIn = requireElement<HTMLButtonElement>('button[aria-label="svg.zoom_in"]');
+        const resetZoom = requireElement<HTMLButtonElement>('button[aria-label="svg.reset_zoom"]');
+
+        expect(surface.style.getPropertyValue("--freeform-canvas-zoom")).toBe("1");
+        await click(zoomOut);
+        expect(surface.style.getPropertyValue("--freeform-canvas-zoom")).toBe("0.75");
+        expect(resetZoom.textContent).toBe("75%");
+        await click(zoomIn);
+        expect(surface.style.getPropertyValue("--freeform-canvas-zoom")).toBe("1");
+        await click(zoomIn);
+        await click(resetZoom);
+        expect(surface.style.getPropertyValue("--freeform-canvas-zoom")).toBe("1");
+    });
+
+    it("maps double-click placement through the canvas zoom", async () => {
+        const note = createNote("page-a", []);
+        await mount(note);
+        const zoomOut = requireElement<HTMLButtonElement>('button[aria-label="svg.zoom_out"]');
+        await click(zoomOut);
+        await click(zoomOut);
+
+        const surface = requireElement<HTMLElement>(".freeform-surface");
+        vi.spyOn(surface, "getBoundingClientRect").mockReturnValue({
+            bottom: 440,
+            height: 400,
+            left: 20,
+            right: 620,
+            top: 40,
+            width: 600,
+            x: 20,
+            y: 40,
+            toJSON: () => ({})
+        });
+        await act(async () => {
+            surface.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, clientX: 220, clientY: 140 }));
+        });
+
+        const item = requireElement<HTMLElement>(".freeform-item.richText");
+        expect(item.style.getPropertyValue("--freeform-item-x")).toBe("400px");
+        expect(item.style.getPropertyValue("--freeform-item-y")).toBe("200px");
+    });
+
+    it("maps dragging through the canvas zoom", async () => {
+        const note = createNote("page-a", [
+            { id: "text-a", type: "richText", x: 40, y: 40, width: 300, height: 120, html: "<p>Move me</p>" }
+        ]);
+        await mount(note);
+        const zoomOut = requireElement<HTMLButtonElement>('button[aria-label="svg.zoom_out"]');
+        await click(zoomOut);
+        await click(zoomOut);
+
+        const dragHandle = requireElement<HTMLElement>(".freeform-item-drag-handle");
+        Object.defineProperty(dragHandle, "setPointerCapture", { value: vi.fn(), configurable: true });
+        await act(async () => {
+            dragHandle.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 100, clientY: 100 }));
+            dragHandle.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 150, clientY: 125 }));
+        });
+
+        const item = requireElement<HTMLElement>(".freeform-item.richText");
+        expect(item.style.getPropertyValue("--freeform-item-x")).toBe("140px");
+        expect(item.style.getPropertyValue("--freeform-item-y")).toBe("90px");
+    });
+
+    it("grows a text box to the intrinsic width of its longest entered line", async () => {
+        const note = createNote("page-a", [
+            { id: "text-a", type: "richText", x: 40, y: 40, width: 300, height: 120, html: "<p>Long line</p>" }
+        ]);
+        await mount(note);
+
+        const probe = requireElement<HTMLElement>(".freeform-item-size-probe");
+        const item = requireElement<HTMLElement>(".freeform-item.richText");
+        Object.defineProperty(probe, "scrollWidth", { value: 742.2, configurable: true });
+        Object.defineProperty(item, "offsetWidth", { value: 302, configurable: true });
+        Object.defineProperty(item, "clientWidth", { value: 300, configurable: true });
+
+        await act(async () => {
+            for (const callback of testState.resizeCallbacks) {
+                callback([], {} as ResizeObserver);
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 10));
+        });
+
+        expect(item.style.getPropertyValue("--freeform-item-width")).toBe("761px");
     });
 
     it("discards an image upload that finishes after navigating to another note", async () => {
@@ -284,4 +417,10 @@ async function pointerDown(element: Element) {
         element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1 }));
     });
     await act(async () => {});
+}
+
+async function click(element: Element) {
+    await act(async () => {
+        element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
 }

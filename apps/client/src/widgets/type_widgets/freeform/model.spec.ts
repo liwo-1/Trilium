@@ -4,6 +4,7 @@ import {
     createEmptyFreeformDocument,
     duplicateFreeformItem,
     getFreeformCanvasExtent,
+    getFreeformTextAutoWidth,
     parseFreeformDocument,
     parseFreeformItemClipboard,
     serializeFreeformItem
@@ -40,6 +41,18 @@ describe("parseFreeformDocument", () => {
 
         expect(result.ok).toBe(true);
         expect(result.document.items[0]).toMatchObject({ x: 0, y: 12, width: 160, height: 10_000 });
+    });
+
+    it("preserves text-box widths beyond the former 960px limit", () => {
+        const result = parseFreeformDocument(JSON.stringify({
+            type: "trilium-freeform",
+            version: 2,
+            gridVisible: false,
+            items: [{ id: "wide-box", type: "richText", x: 20, y: 30, width: 2_400, height: 180, html: "<p>Wide content</p>" }]
+        }));
+
+        expect(result.ok).toBe(true);
+        expect(result.document.items[0]).toMatchObject({ width: 2_400 });
     });
 
     it("preserves a manually chosen text-box height as its minimum height", () => {
@@ -86,6 +99,13 @@ describe("parseFreeformDocument", () => {
 
         expect(getFreeformCanvasExtent(items)).toEqual({ width: 2492, height: 1352 });
         expect(getFreeformCanvasExtent([])).toEqual({ width: 0, height: 0 });
+    });
+
+    it("grows text boxes to their measured line width without shrinking manual sizing", () => {
+        expect(getFreeformTextAutoWidth(360, 742.2)).toBe(759);
+        expect(getFreeformTextAutoWidth(720, 400)).toBe(720);
+        expect(getFreeformTextAutoWidth(360, 1_400)).toBe(1_416);
+        expect(getFreeformTextAutoWidth(360, Number.NaN)).toBe(360);
     });
 
     it("keeps valid items positioned beyond the initial viewport", () => {
